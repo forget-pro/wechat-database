@@ -356,3 +356,51 @@ func (m *Manager) CommandHTTPServer(addr string, dataDir string, workDir string,
 
 	return m.http.ListenAndServe()
 }
+
+// GetWeChatInstances returns all running WeChat instances
+func (m *Manager) GetWeChatInstances() []*iwechat.Account {
+	return m.wechat.GetWeChatInstances()
+}
+
+// GetCurrentStatus returns the current status information
+func (m *Manager) GetCurrentStatus() *ctx.Context {
+	// Refresh the current context to get latest information
+	m.ctx.WeChatInstances = m.wechat.GetWeChatInstances()
+	if len(m.ctx.WeChatInstances) >= 1 && m.ctx.Current == nil {
+		m.ctx.SwitchCurrent(m.ctx.WeChatInstances[0])
+	}
+	if m.ctx.Current != nil {
+		m.ctx.Refresh()
+	}
+	// Make sure to load the latest config
+	m.ctx.UpdateConfig()
+	return m.ctx
+}
+
+// SetWorkDir sets the working directory
+func (m *Manager) SetWorkDir(dir string) error {
+	if dir == "" {
+		return fmt.Errorf("work directory cannot be empty")
+	}
+	m.ctx.SetWorkDir(dir)
+	return nil
+}
+
+// SetDataDir sets the data directory
+func (m *Manager) SetDataDir(dir string) error {
+	if dir == "" {
+		return fmt.Errorf("data directory cannot be empty")
+	}
+	m.ctx.SetDataDir(dir)
+	return nil
+}
+
+// SetDataKey sets the data encryption key
+func (m *Manager) SetDataKey(key string) error {
+	if key == "" {
+		return fmt.Errorf("key cannot be empty")
+	}
+	m.ctx.DataKey = key
+	m.ctx.UpdateConfig()
+	return nil
+}
