@@ -3,7 +3,13 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write # 允许写入代码库内容
+  packages: write # 允许写入包
+  id-token: write # 允许写入 ID 令牌
 
 env:
   ENABLE_UPX: 1
@@ -24,7 +30,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v4
         with:
-          go-version: '^1.24'
+          go-version: "^1.24"
 
       - name: Cache go module
         uses: actions/cache@v3
