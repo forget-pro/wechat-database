@@ -365,18 +365,26 @@ func (ds *DataSource) GetContacts(ctx context.Context, key string, limit, offset
 	var args []interface{}
 
 	if key != "" {
-		// 按照关键字查询
-		query = `SELECT username, local_type, alias, remark, nick_name 
-				FROM contact 
-				WHERE username = ? OR alias = ? OR remark = ? OR nick_name = ?`
-		args = []interface{}{key, key, key, key}
+		// 按照关键字查询，连表查询头像信息，支持模糊搜索
+		query = `SELECT c.username, c.local_type, c.alias, c.remark, c.nick_name,
+                        COALESCE(h.bigHeadImgUrl, '') as big_head_img_url,
+                        COALESCE(h.smallHeadImgUrl, '') as small_head_img_url
+				FROM contact c
+				LEFT JOIN ContactHeadImgUrl h ON c.username = h.usrName
+				WHERE c.username LIKE ? OR c.alias LIKE ? OR c.remark LIKE ? OR c.nick_name LIKE ?`
+		searchKey := "%" + key + "%"
+		args = []interface{}{searchKey, searchKey, searchKey, searchKey}
 	} else {
-		// 查询所有联系人
-		query = `SELECT username, local_type, alias, remark, nick_name FROM contact`
+		// 查询所有联系人，连表查询头像信息
+		query = `SELECT c.username, c.local_type, c.alias, c.remark, c.nick_name,
+                        COALESCE(h.bigHeadImgUrl, '') as big_head_img_url,
+                        COALESCE(h.smallHeadImgUrl, '') as small_head_img_url
+				FROM contact c
+				LEFT JOIN ContactHeadImgUrl h ON c.username = h.usrName`
 	}
 
 	// 添加排序、分页
-	query += ` ORDER BY username`
+	query += ` ORDER BY c.username`
 	if limit > 0 {
 		query += fmt.Sprintf(" LIMIT %d", limit)
 		if offset > 0 {
@@ -404,6 +412,8 @@ func (ds *DataSource) GetContacts(ctx context.Context, key string, limit, offset
 			&contactV4.Alias,
 			&contactV4.Remark,
 			&contactV4.NickName,
+			&contactV4.BigHeadImgUrl,
+			&contactV4.SmallHeadImgUrl,
 		)
 
 		if err != nil {
@@ -428,9 +438,10 @@ func (ds *DataSource) GetChatRooms(ctx context.Context, key string, limit, offse
 	}
 
 	if key != "" {
-		// 按照关键字查询
-		query = `SELECT username, owner, ext_buffer FROM chat_room WHERE username = ?`
-		args = []interface{}{key}
+		// 按照关键字查询，支持模糊搜索
+		query = `SELECT username, owner, ext_buffer FROM chat_room WHERE username LIKE ?`
+		searchKey := "%" + key + "%"
+		args = []interface{}{searchKey}
 
 		rows, err := db.QueryContext(ctx, query, args...)
 		if err != nil {

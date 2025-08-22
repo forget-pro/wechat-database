@@ -406,17 +406,26 @@ func (ds *DataSource) GetContacts(ctx context.Context, key string, limit, offset
 	var args []interface{}
 
 	if key != "" {
-		// 按照关键字查询
-		query = `SELECT UserName, Alias, Remark, NickName, Reserved1 FROM Contact 
-                WHERE UserName = ? OR Alias = ? OR Remark = ? OR NickName = ?`
-		args = []interface{}{key, key, key, key}
+		// 按照关键字查询，连表查询头像信息，支持模糊搜索
+		query = `SELECT c.UserName, c.Alias, c.Remark, c.NickName, c.Reserved1, 
+                        COALESCE(h.bigHeadImgUrl, c.BigHeadImgUrl, '') as BigHeadImgUrl,
+                        COALESCE(h.smallHeadImgUrl, c.SmallHeadImgUrl, '') as SmallHeadImgUrl
+                FROM Contact c
+                LEFT JOIN ContactHeadImgUrl h ON c.UserName = h.usrName
+                WHERE c.UserName LIKE ? OR c.Alias LIKE ? OR c.Remark LIKE ? OR c.NickName LIKE ?`
+		searchKey := "%" + key + "%"
+		args = []interface{}{searchKey, searchKey, searchKey, searchKey}
 	} else {
-		// 查询所有联系人
-		query = `SELECT UserName, Alias, Remark, NickName, Reserved1 FROM Contact`
+		// 查询所有联系人，连表查询头像信息
+		query = `SELECT c.UserName, c.Alias, c.Remark, c.NickName, c.Reserved1,
+                        COALESCE(h.bigHeadImgUrl, c.BigHeadImgUrl, '') as BigHeadImgUrl,
+                        COALESCE(h.smallHeadImgUrl, c.SmallHeadImgUrl, '') as SmallHeadImgUrl
+                FROM Contact c
+                LEFT JOIN ContactHeadImgUrl h ON c.UserName = h.usrName`
 	}
 
 	// 添加排序、分页
-	query += ` ORDER BY UserName`
+	query += ` ORDER BY c.UserName`
 	if limit > 0 {
 		query += fmt.Sprintf(" LIMIT %d", limit)
 		if offset > 0 {
@@ -444,6 +453,8 @@ func (ds *DataSource) GetContacts(ctx context.Context, key string, limit, offset
 			&contactV3.Remark,
 			&contactV3.NickName,
 			&contactV3.Reserved1,
+			&contactV3.BigHeadImgUrl,
+			&contactV3.SmallHeadImgUrl,
 		)
 
 		if err != nil {
@@ -462,9 +473,10 @@ func (ds *DataSource) GetChatRooms(ctx context.Context, key string, limit, offse
 	var args []interface{}
 
 	if key != "" {
-		// 按照关键字查询
-		query = `SELECT ChatRoomName, Reserved2, RoomData FROM ChatRoom WHERE ChatRoomName = ?`
-		args = []interface{}{key}
+		// 按照关键字查询，支持模糊搜索
+		query = `SELECT ChatRoomName, Reserved2, RoomData FROM ChatRoom WHERE ChatRoomName LIKE ?`
+		searchKey := "%" + key + "%"
+		args = []interface{}{searchKey}
 
 		// 执行查询
 		db, err := ds.dbm.GetDB(Contact)

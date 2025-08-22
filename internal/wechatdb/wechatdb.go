@@ -15,16 +15,18 @@ type DB struct {
 	path     string
 	platform string
 	version  int
+	account  string
 	ds       datasource.DataSource
 	repo     *repository.Repository
 }
 
-func New(path string, platform string, version int) (*DB, error) {
+func New(path string, platform string, version int, account string) (*DB, error) {
 
 	w := &DB{
 		path:     path,
 		platform: platform,
 		version:  version,
+		account:  account,
 	}
 
 	// 初始化，加载数据库文件信息
@@ -49,7 +51,7 @@ func (w *DB) Initialize() error {
 		return err
 	}
 
-	w.repo, err = repository.New(w.ds)
+	w.repo, err = repository.New(w.ds, w.account)
 	if err != nil {
 		return err
 	}

@@ -369,19 +369,26 @@ func (ds *DataSource) GetContacts(ctx context.Context, key string, limit, offset
 	var args []interface{}
 
 	if key != "" {
-		// 按照关键字查询
-		query = `SELECT IFNULL(m_nsUsrName,""), IFNULL(nickname,""), IFNULL(m_nsRemark,""), m_uiSex, IFNULL(m_nsAliasName,"") 
-				FROM WCContact 
-				WHERE m_nsUsrName = ? OR nickname = ? OR m_nsRemark = ? OR m_nsAliasName = ?`
-		args = []interface{}{key, key, key, key}
+		// 按照关键字查询，连表查询头像信息，支持模糊搜索
+		query = `SELECT IFNULL(c.m_nsUsrName,""), IFNULL(c.nickname,""), IFNULL(c.m_nsRemark,""), c.m_uiSex, IFNULL(c.m_nsAliasName,""),
+                        COALESCE(h.bigHeadImgUrl, '') as big_head_img_url,
+                        COALESCE(h.smallHeadImgUrl, '') as small_head_img_url
+				FROM WCContact c
+				LEFT JOIN ContactHeadImgUrl h ON c.m_nsUsrName = h.usrName
+				WHERE c.m_nsUsrName LIKE ? OR c.nickname LIKE ? OR c.m_nsRemark LIKE ? OR c.m_nsAliasName LIKE ?`
+		searchKey := "%" + key + "%"
+		args = []interface{}{searchKey, searchKey, searchKey, searchKey}
 	} else {
-		// 查询所有联系人
-		query = `SELECT IFNULL(m_nsUsrName,""), IFNULL(nickname,""), IFNULL(m_nsRemark,""), m_uiSex, IFNULL(m_nsAliasName,"") 
-				FROM WCContact`
+		// 查询所有联系人，连表查询头像信息
+		query = `SELECT IFNULL(c.m_nsUsrName,""), IFNULL(c.nickname,""), IFNULL(c.m_nsRemark,""), c.m_uiSex, IFNULL(c.m_nsAliasName,""),
+                        COALESCE(h.bigHeadImgUrl, '') as big_head_img_url,
+                        COALESCE(h.smallHeadImgUrl, '') as small_head_img_url
+				FROM WCContact c
+				LEFT JOIN ContactHeadImgUrl h ON c.m_nsUsrName = h.usrName`
 	}
 
 	// 添加排序、分页
-	query += ` ORDER BY m_nsUsrName`
+	query += ` ORDER BY c.m_nsUsrName`
 	if limit > 0 {
 		query += fmt.Sprintf(" LIMIT %d", limit)
 		if offset > 0 {
@@ -409,6 +416,8 @@ func (ds *DataSource) GetContacts(ctx context.Context, key string, limit, offset
 			&contactDarwinV3.M_nsRemark,
 			&contactDarwinV3.M_uiSex,
 			&contactDarwinV3.M_nsAliasName,
+			&contactDarwinV3.BigHeadImgUrl,
+			&contactDarwinV3.SmallHeadImgUrl,
 		)
 
 		if err != nil {
@@ -427,11 +436,12 @@ func (ds *DataSource) GetChatRooms(ctx context.Context, key string, limit, offse
 	var args []interface{}
 
 	if key != "" {
-		// 按照关键字查询
+		// 按照关键字查询，支持模糊搜索
 		query = `SELECT IFNULL(m_nsUsrName,""), IFNULL(nickname,""), IFNULL(m_nsRemark,""), IFNULL(m_nsChatRoomMemList,""), IFNULL(m_nsChatRoomAdminList,"") 
 				FROM GroupContact 
-				WHERE m_nsUsrName = ? OR nickname = ? OR m_nsRemark = ?`
-		args = []interface{}{key, key, key}
+				WHERE m_nsUsrName LIKE ? OR nickname LIKE ? OR m_nsRemark LIKE ?`
+		searchKey := "%" + key + "%"
+		args = []interface{}{searchKey, searchKey, searchKey}
 	} else {
 		// 查询所有群聊
 		query = `SELECT IFNULL(m_nsUsrName,""), IFNULL(nickname,""), IFNULL(m_nsRemark,""), IFNULL(m_nsChatRoomMemList,""), IFNULL(m_nsChatRoomAdminList,"") 

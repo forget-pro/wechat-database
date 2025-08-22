@@ -22,11 +22,13 @@ _聊天记录工具，帮助大家轻松使用自己的聊天数据_
 - 支持微信 3.x / 4.0 版本
 - 提供 Terminal UI 界面 & 命令行工具
 - 提供 HTTP API 服务，支持查询聊天记录、联系人、群聊、最近会话等信息
+- 支持模糊搜索功能，可按昵称、备注、内容等进行搜索
+- 支持聊天记录中显示用户头像信息
 - 支持 MCP SSE 协议，可与支持 MCP 的 AI 助手无缝集成
 - 支持多媒体消息，支持解密图片、语音
 - 支持自动解密数据，简化使用流程
 - 支持多账号管理，可在不同账号间切换
-
+- 提供便捷的服务管理命令（停止、退出等）
 
 ## TODO
 
@@ -74,10 +76,13 @@ chatlog
 ```
 
 操作方法：
+
 - 使用 `↑` `↓` 键选择菜单项
 - 按 `Enter` 确认选择
 - 按 `Esc` 返回上级菜单
 - 按 `Ctrl+C` 退出程序
+
+> 💡 **提示**：如果需要从命令行快速停止服务，可以使用 `chatlog stop` 命令
 
 ### 命令行模式
 
@@ -92,7 +97,21 @@ chatlog decrypt
 
 # 启动 HTTP 服务
 chatlog server
+
+# 停止正在运行的服务
+chatlog stop
+
+# 退出程序
+chatlog exit
 ```
+
+#### 命令详细说明
+
+- **`chatlog key`**: 获取微信数据加密密钥，需要微信正在运行
+- **`chatlog decrypt`**: 解密微信数据库文件到工作目录
+- **`chatlog server`**: 启动 HTTP API 服务，默认监听 `127.0.0.1:5030`
+- **`chatlog stop`**: 查找并停止正在运行的 chatlog 服务进程
+- **`chatlog exit`**: 安全退出程序，会先停止所有服务再退出
 
 ### 从手机迁移聊天记录
 
@@ -115,18 +134,20 @@ chatlog server
 macOS 用户在获取密钥前需要临时关闭 SIP（系统完整性保护）：
 
 1. **关闭 SIP**：
+
    ```shell
    # 进入恢复模式
    # Intel Mac: 重启时按住 Command + R
    # Apple Silicon: 重启时长按电源键
-   
+
    # 在恢复模式中打开终端并执行
    csrutil disable
-   
+
    # 重启系统
    ```
 
 2. **安装必要工具**：
+
    ```shell
    # 安装 Xcode Command Line Tools
    xcode-select --install
@@ -140,6 +161,8 @@ macOS 用户在获取密钥前需要临时关闭 SIP（系统完整性保护）�
 
 启动 HTTP 服务后（默认地址 `http://127.0.0.1:5030`），可通过以下 API 访问数据：
 
+> 💡 **服务管理**：可以使用 `chatlog stop` 命令停止正在运行的 HTTP 服务，或者使用 `chatlog exit` 安全退出程序
+
 ### 聊天记录查询
 
 ```
@@ -147,17 +170,22 @@ GET /api/v1/chatlog?time=2023-01-01&talker=wxid_xxx
 ```
 
 参数说明：
+
 - `time`: 时间范围，格式为 `YYYY-MM-DD` 或 `YYYY-MM-DD~YYYY-MM-DD`
-- `talker`: 聊天对象标识（支持 wxid、群聊 ID、备注名、昵称等）
+- `talker`: 聊天对象标识（支持 wxid、群聊 ID、备注名、昵称等，支持模糊搜索）
+- `sender`: 发送者标识（支持模糊搜索）
+- `keyword`: 消息内容关键词（支持模糊搜索）
 - `limit`: 返回记录数量
 - `offset`: 分页偏移量
 - `format`: 输出格式，支持 `json`、`csv` 或纯文本
 
 ### 其他 API 接口
 
-- **联系人列表**：`GET /api/v1/contact`
-- **群聊列表**：`GET /api/v1/chatroom`
+- **联系人列表**：`GET /api/v1/contact`（支持 `keyword` 参数进行模糊搜索）
+- **群聊列表**：`GET /api/v1/chatroom`（支持 `keyword` 参数进行模糊搜索）
 - **会话列表**：`GET /api/v1/session`
+
+所有列表接口都支持 `limit`、`offset`、`format` 参数进行分页和格式控制。
 
 ### 多媒体内容
 
@@ -234,5 +262,5 @@ Chatlog 可以与多种支持 MCP 的 AI 助手集成，包括：
 - [@0xlane](https://github.com/0xlane) 的 [wechat-dump-rs](https://github.com/0xlane/wechat-dump-rs) 项目
 - [@xaoyaoo](https://github.com/xaoyaoo) 的 [PyWxDump](https://github.com/xaoyaoo/PyWxDump) 项目
 - [@git-jiadong](https://github.com/git-jiadong) 的 [go-lame](https://github.com/git-jiadong/go-lame) 和 [go-silk](https://github.com/git-jiadong/go-silk) 项目
-- [Anthropic](https://www.anthropic.com/) 的 [MCP]((https://github.com/modelcontextprotocol) ) 协议
+- [Anthropic](https://www.anthropic.com/) 的 [MCP](<(https://github.com/modelcontextprotocol)>) 协议
 - 各个 Go 开源库的贡献者们

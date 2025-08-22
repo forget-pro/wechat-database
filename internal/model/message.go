@@ -32,6 +32,10 @@ type Message struct {
 	Content    string                 `json:"content"`            // 消息内容，文字聊天内容
 	Contents   map[string]interface{} `json:"contents,omitempty"` // 消息内容，多媒体消息，采用更灵活的记录方式
 
+	// 头像信息
+	SenderAvatar    string `json:"senderAvatar,omitempty"`    // 发送者头像 URL
+	SenderAvatarHD  string `json:"senderAvatarHD,omitempty"`  // 发送者高清头像 URL
+
 	// Debug Info
 	MediaMsg *MediaMsg `json:"mediaMsg,omitempty"` // 原始多媒体消息，XML 格式
 	SysMsg   *SysMsg   `json:"sysMsg,omitempty"`   // 原始系统消息，XML 格式

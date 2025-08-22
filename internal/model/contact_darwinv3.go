@@ -35,19 +35,23 @@ package model
 // openIMInfo BLOB
 // )
 type ContactDarwinV3 struct {
-	M_nsUsrName   string `json:"m_nsUsrName"`
-	Nickname      string `json:"nickname"`
-	M_nsRemark    string `json:"m_nsRemark"`
-	M_uiSex       int    `json:"m_uiSex"`
-	M_nsAliasName string `json:"m_nsAliasName"`
+	M_nsUsrName      string `json:"m_nsUsrName"`
+	Nickname         string `json:"nickname"`
+	M_nsRemark       string `json:"m_nsRemark"`
+	M_uiSex          int    `json:"m_uiSex"`
+	M_nsAliasName    string `json:"m_nsAliasName"`
+	BigHeadImgUrl    string `json:"big_head_img_url"`
+	SmallHeadImgUrl  string `json:"small_head_img_url"`
 }
 
 func (c *ContactDarwinV3) Wrap() *Contact {
 	return &Contact{
-		UserName: c.M_nsUsrName,
-		Alias:    c.M_nsAliasName,
-		Remark:   c.M_nsRemark,
-		NickName: c.Nickname,
-		IsFriend: true,
+		UserName:        c.M_nsUsrName,
+		Alias:           c.M_nsAliasName,
+		Remark:          c.M_nsRemark,
+		NickName:        c.Nickname,
+		IsFriend:        true,
+		BigHeadImgUrl:   c.BigHeadImgUrl,
+		SmallHeadImgUrl: c.SmallHeadImgUrl,
 	}
 }

@@ -15,6 +15,9 @@ import (
 type Repository struct {
 	ds datasource.DataSource
 
+	// Current user account
+	account string
+
 	// Cache for contact
 	contactCache      map[string]*model.Contact
 	aliasToContact    map[string][]*model.Contact
@@ -39,9 +42,10 @@ type Repository struct {
 }
 
 // New 创建一个新的 Repository
-func New(ds datasource.DataSource) (*Repository, error) {
+func New(ds datasource.DataSource, account string) (*Repository, error) {
 	r := &Repository{
 		ds:                 ds,
+		account:            account,
 		contactCache:       make(map[string]*model.Contact),
 		aliasToContact:     make(map[string][]*model.Contact),
 		remarkToContact:    make(map[string][]*model.Contact),

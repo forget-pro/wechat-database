@@ -20,7 +20,7 @@ func NewService(ctx *ctx.Context) *Service {
 }
 
 func (s *Service) Start() error {
-	db, err := wechatdb.New(s.ctx.WorkDir, s.ctx.Platform, s.ctx.Version)
+	db, err := wechatdb.New(s.ctx.WorkDir, s.ctx.Platform, s.ctx.Version, s.ctx.Account)
 	if err != nil {
 		return err
 	}

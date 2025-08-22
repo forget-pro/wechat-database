@@ -25,19 +25,23 @@ package model
 // chat_room_type INTEGER
 // )
 type ContactV4 struct {
-	UserName  string `json:"username"`
-	Alias     string `json:"alias"`
-	Remark    string `json:"remark"`
-	NickName  string `json:"nick_name"`
-	LocalType int    `json:"local_type"` // 2 群聊; 3 群聊成员(非好友); 5,6 企业微信;
+	UserName         string `json:"username"`
+	Alias            string `json:"alias"`
+	Remark           string `json:"remark"`
+	NickName         string `json:"nick_name"`
+	LocalType        int    `json:"local_type"` // 2 群聊; 3 群聊成员(非好友); 5,6 企业微信;
+	BigHeadImgUrl    string `json:"big_head_img_url"`
+	SmallHeadImgUrl  string `json:"small_head_img_url"`
 }
 
 func (c *ContactV4) Wrap() *Contact {
 	return &Contact{
-		UserName: c.UserName,
-		Alias:    c.Alias,
-		Remark:   c.Remark,
-		NickName: c.NickName,
-		IsFriend: c.LocalType != 3,
+		UserName:        c.UserName,
+		Alias:           c.Alias,
+		Remark:          c.Remark,
+		NickName:        c.NickName,
+		IsFriend:        c.LocalType != 3,
+		BigHeadImgUrl:   c.BigHeadImgUrl,
+		SmallHeadImgUrl: c.SmallHeadImgUrl,
 	}
 }
