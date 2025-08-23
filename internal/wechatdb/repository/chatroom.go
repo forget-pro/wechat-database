@@ -131,6 +131,50 @@ func (r *Repository) GetChatRooms(ctx context.Context, key string, limit, offset
 	return ret, nil
 }
 
+// GetChatRoomsWithTotal 获取聊天室列表和总数
+func (r *Repository) GetChatRoomsWithTotal(ctx context.Context, key string, limit, offset int) ([]*model.ChatRoom, int, error) {
+	var total int
+	ret := make([]*model.ChatRoom, 0)
+	
+	if key != "" {
+		allMatched := r.findChatRooms(key)
+		total = len(allMatched)
+		if total == 0 {
+			return []*model.ChatRoom{}, 0, nil
+		}
+		if limit > 0 {
+			end := offset + limit
+			if end > len(allMatched) {
+				end = len(allMatched)
+			}
+			if offset >= len(allMatched) {
+				return []*model.ChatRoom{}, total, nil
+			}
+			ret = allMatched[offset:end]
+		} else {
+			ret = allMatched
+		}
+	} else {
+		list := r.chatRoomList
+		total = len(list)
+		if limit > 0 {
+			end := offset + limit
+			if end > len(list) {
+				end = len(list)
+			}
+			if offset >= len(list) {
+				return []*model.ChatRoom{}, total, nil
+			}
+			list = list[offset:end]
+		}
+		for _, name := range list {
+			ret = append(ret, r.chatRoomCache[name])
+		}
+	}
+
+	return ret, total, nil
+}
+
 func (r *Repository) GetChatRoom(ctx context.Context, key string) (*model.ChatRoom, error) {
 	chatRoom := r.findChatRoom(key)
 	if chatRoom == nil {

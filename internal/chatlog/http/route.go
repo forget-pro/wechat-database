@@ -75,13 +75,14 @@ func (s *Service) NoRoute(c *gin.Context) {
 func (s *Service) GetChatlog(c *gin.Context) {
 
 	q := struct {
-		Time    string `form:"time"`
-		Talker  string `form:"talker"`
-		Sender  string `form:"sender"`
-		Keyword string `form:"keyword"`
-		Limit   int    `form:"limit"`
-		Offset  int    `form:"offset"`
-		Format  string `form:"format"`
+		Time       string `form:"time"`
+		Talker     string `form:"talker"`
+		Sender     string `form:"sender"`
+		Keyword    string `form:"keyword"`
+		Limit      int    `form:"limit"`
+		Offset     int    `form:"offset"`
+		Format     string `form:"format"`
+		Pagination bool   `form:"pagination"` // 是否返回分页信息
 	}{}
 
 	if err := c.BindQuery(&q); err != nil {
@@ -102,13 +103,27 @@ func (s *Service) GetChatlog(c *gin.Context) {
 		q.Offset = 0
 	}
 
+	format := strings.ToLower(q.Format)
+
+	// 如果请求分页信息且格式为JSON，使用带分页的API
+	if q.Pagination && format == "json" {
+		result, err := s.db.GetMessagesWithPagination(start, end, q.Talker, q.Sender, q.Keyword, q.Limit, q.Offset)
+		if err != nil {
+			errors.Err(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, result)
+		return
+	}
+
+	// 原有的API逻辑
 	messages, err := s.db.GetMessages(start, end, q.Talker, q.Sender, q.Keyword, q.Limit, q.Offset)
 	if err != nil {
 		errors.Err(c, err)
 		return
 	}
 
-	switch strings.ToLower(q.Format) {
+	switch format {
 	case "csv":
 	case "json":
 		// json

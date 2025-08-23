@@ -14,21 +14,59 @@ import (
 // GetMessages 实现 Repository 接口的 GetMessages 方法
 func (r *Repository) GetMessages(ctx context.Context, startTime, endTime time.Time, talker string, sender string, keyword string, limit, offset int) ([]*model.Message, error) {
 
-talker, sender = r.parseTalkerAndSender(ctx, talker, sender)
-messages, err := r.ds.GetMessages(ctx, startTime, endTime, talker, sender, keyword, limit, offset)
-if err != nil {
-return nil, err
+	talker, sender = r.parseTalkerAndSender(ctx, talker, sender)
+	messages, err := r.ds.GetMessages(ctx, startTime, endTime, talker, sender, keyword, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+
+	// 补充消息信息
+	if err := r.EnrichMessages(ctx, messages); err != nil {
+		log.Debug().Msgf("EnrichMessages failed: %v", err)
+	}
+
+	return messages, nil
 }
 
-// 补充消息信息
-if err := r.EnrichMessages(ctx, messages); err != nil {
-log.Debug().Msgf("EnrichMessages failed: %v", err)
-}
+// GetMessagesWithTotal 获取消息列表和总数
+func (r *Repository) GetMessagesWithTotal(ctx context.Context, startTime, endTime time.Time, talker string, sender string, keyword string, limit, offset int) ([]*model.Message, int, error) {
+	talker, sender = r.parseTalkerAndSender(ctx, talker, sender)
+	
+	// 获取消息列表
+	messages, err := r.ds.GetMessages(ctx, startTime, endTime, talker, sender, keyword, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
 
-return messages, nil
-}
+	// 获取总数 - 如果datasource支持GetMessagesCount，使用它；否则通过无limit查询估算
+	var total int
+	if countSupported, ok := r.ds.(interface {
+		GetMessagesCount(ctx context.Context, startTime, endTime time.Time, talker string, sender string, keyword string) (int, error)
+	}); ok {
+		total, err = countSupported.GetMessagesCount(ctx, startTime, endTime, talker, sender, keyword)
+		if err != nil {
+			// 如果获取总数失败，fallback到估算方式
+			total = len(messages)
+			if limit > 0 && len(messages) == limit {
+				// 如果返回的消息数等于limit，说明可能还有更多
+				total = offset + limit + 1 // 估算还有更多
+			}
+		}
+	} else {
+		// Fallback: 如果datasource不支持count，使用简单估算
+		total = len(messages)
+		if limit > 0 && len(messages) == limit {
+			total = offset + limit + 1 // 估算还有更多
+		}
+	}
 
-// EnrichMessages 补充消息的额外信息
+	// 补充消息信息
+	if err := r.EnrichMessages(ctx, messages); err != nil {
+		log.Debug().Msgf("EnrichMessages failed: %v", err)
+	}
+
+	return messages, total, nil
+}// EnrichMessages 补充消息的额外信息
 func (r *Repository) EnrichMessages(ctx context.Context, messages []*model.Message) error {
 for _, msg := range messages {
 r.enrichMessage(ctx, msg)

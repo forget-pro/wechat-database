@@ -134,6 +134,49 @@ func (r *Repository) GetContacts(ctx context.Context, key string, limit, offset 
 	return ret, nil
 }
 
+// GetContactsWithTotal 获取联系人列表和总数
+func (r *Repository) GetContactsWithTotal(ctx context.Context, key string, limit, offset int) ([]*model.Contact, int, error) {
+	var total int
+	ret := make([]*model.Contact, 0)
+	
+	if key != "" {
+		allMatched := r.findContacts(key)
+		total = len(allMatched)
+		if total == 0 {
+			return []*model.Contact{}, 0, nil
+		}
+		if limit > 0 {
+			end := offset + limit
+			if end > len(allMatched) {
+				end = len(allMatched)
+			}
+			if offset >= len(allMatched) {
+				return []*model.Contact{}, total, nil
+			}
+			ret = allMatched[offset:end]
+		} else {
+			ret = allMatched
+		}
+	} else {
+		list := r.contactList
+		total = len(list)
+		if limit > 0 {
+			end := offset + limit
+			if end > len(list) {
+				end = len(list)
+			}
+			if offset >= len(list) {
+				return []*model.Contact{}, total, nil
+			}
+			list = list[offset:end]
+		}
+		for _, name := range list {
+			ret = append(ret, r.contactCache[name])
+		}
+	}
+	return ret, total, nil
+}
+
 func (r *Repository) findContact(key string) *model.Contact {
 	if contact, ok := r.contactCache[key]; ok {
 		return contact

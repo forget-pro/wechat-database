@@ -400,6 +400,165 @@ func (ds *DataSource) GetMessages(ctx context.Context, startTime, endTime time.T
 	return filteredMessages, nil
 }
 
+// GetMessagesCount 获取消息总数
+func (ds *DataSource) GetMessagesCount(ctx context.Context, startTime, endTime time.Time, talker string, sender string, keyword string) (int, error) {
+	if talker == "" {
+		return 0, errors.ErrTalkerEmpty
+	}
+
+	// 解析talker参数，支持多个talker（以英文逗号分隔）
+	talkers := util.Str2List(talker, ",")
+	if len(talkers) == 0 {
+		return 0, errors.ErrTalkerEmpty
+	}
+
+	// 找到时间范围内的数据库文件
+	dbInfos := ds.getDBInfosForTimeRange(startTime, endTime)
+	if len(dbInfos) == 0 {
+		return 0, nil
+	}
+
+	// 解析sender参数，支持多个发送者（以英文逗号分隔）
+	senders := util.Str2List(sender, ",")
+
+	// 预编译正则表达式（如果有keyword）
+	var regex *regexp.Regexp
+	if keyword != "" {
+		var err error
+		regex, err = regexp.Compile(keyword)
+		if err != nil {
+			return 0, errors.QueryFailed("invalid regex pattern", err)
+		}
+	}
+
+	totalCount := 0
+
+	for _, dbInfo := range dbInfos {
+		// 检查上下文是否已取消
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+
+		db, err := ds.dbm.OpenDB(dbInfo.FilePath)
+		if err != nil {
+			log.Error().Msgf("数据库 %s 未打开", dbInfo.FilePath)
+			continue
+		}
+
+		// 对每个talker进行查询
+		for _, talkerItem := range talkers {
+			// 构建查询条件
+			conditions := []string{"Sequence >= ? AND Sequence <= ?"}
+			args := []interface{}{startTime.Unix() * 1000, endTime.Unix() * 1000}
+
+			// 添加talker条件
+			talkerID, ok := dbInfo.TalkerMap[talkerItem]
+			if ok {
+				conditions = append(conditions, "TalkerId = ?")
+				args = append(args, talkerID)
+			} else {
+				conditions = append(conditions, "StrTalker = ?")
+				args = append(args, talkerItem)
+			}
+
+			// 如果没有复杂过滤条件，直接使用COUNT查询
+			if len(senders) == 0 && keyword == "" {
+				query := fmt.Sprintf(`
+					SELECT COUNT(*) 
+					FROM MSG 
+					WHERE %s
+				`, strings.Join(conditions, " AND "))
+
+				var count int
+				err := db.QueryRowContext(ctx, query, args...).Scan(&count)
+				if err != nil {
+					if strings.Contains(err.Error(), "no such table") {
+						continue
+					}
+					log.Err(err).Msgf("从数据库 %s 查询消息数量失败", dbInfo.FilePath)
+					continue
+				}
+				totalCount += count
+			} else {
+				// 有复杂过滤条件，需要逐行检查
+				query := fmt.Sprintf(`
+					SELECT MsgSvrID, Sequence, CreateTime, StrTalker, IsSender, 
+						Type, SubType, StrContent, CompressContent, BytesExtra
+					FROM MSG 
+					WHERE %s 
+					ORDER BY Sequence ASC
+				`, strings.Join(conditions, " AND "))
+
+				rows, err := db.QueryContext(ctx, query, args...)
+				if err != nil {
+					if strings.Contains(err.Error(), "no such table") {
+						continue
+					}
+					log.Err(err).Msgf("从数据库 %s 查询消息失败", dbInfo.FilePath)
+					continue
+				}
+
+				count := 0
+				for rows.Next() {
+					var msg model.MessageV3
+					var compressContent []byte
+					var bytesExtra []byte
+
+					err := rows.Scan(
+						&msg.MsgSvrID,
+						&msg.Sequence,
+						&msg.CreateTime,
+						&msg.StrTalker,
+						&msg.IsSender,
+						&msg.Type,
+						&msg.SubType,
+						&msg.StrContent,
+						&compressContent,
+						&bytesExtra,
+					)
+					if err != nil {
+						rows.Close()
+						return 0, errors.ScanRowFailed(err)
+					}
+					msg.CompressContent = compressContent
+					msg.BytesExtra = bytesExtra
+
+					// 将消息转换为标准格式
+					message := msg.Wrap()
+
+					// 应用sender过滤
+					if len(senders) > 0 {
+						senderMatch := false
+						for _, s := range senders {
+							if message.Sender == s {
+								senderMatch = true
+								break
+							}
+						}
+						if !senderMatch {
+							continue
+						}
+					}
+
+					// 应用keyword过滤
+					if regex != nil {
+						plainText := message.PlainTextContent()
+						if !regex.MatchString(plainText) {
+							continue
+						}
+					}
+
+					count++
+				}
+				rows.Close()
+				totalCount += count
+			}
+		}
+	}
+
+	return totalCount, nil
+}
+
 // GetContacts 实现获取联系人信息的方法
 func (ds *DataSource) GetContacts(ctx context.Context, key string, limit, offset int) ([]*model.Contact, error) {
 	var query string

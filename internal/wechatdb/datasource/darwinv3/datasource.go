@@ -349,6 +349,141 @@ func (ds *DataSource) GetMessages(ctx context.Context, startTime, endTime time.T
 	return filteredMessages, nil
 }
 
+// GetMessagesCount 获取消息总数
+func (ds *DataSource) GetMessagesCount(ctx context.Context, startTime, endTime time.Time, talker string, sender string, keyword string) (int, error) {
+	if talker == "" {
+		return 0, errors.ErrTalkerEmpty
+	}
+
+	// 解析talker参数，支持多个talker（以英文逗号分隔）
+	talkers := util.Str2List(talker, ",")
+	if len(talkers) == 0 {
+		return 0, errors.ErrTalkerEmpty
+	}
+
+	// 解析sender参数，支持多个发送者（以英文逗号分隔）
+	senders := util.Str2List(sender, ",")
+
+	// 预编译正则表达式（如果有keyword）
+	var regex *regexp.Regexp
+	if keyword != "" {
+		var err error
+		regex, err = regexp.Compile(keyword)
+		if err != nil {
+			return 0, errors.QueryFailed("invalid regex pattern", err)
+		}
+	}
+
+	totalCount := 0
+
+	for _, talkerItem := range talkers {
+		// 检查上下文是否已取消
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+
+		// 在 darwinv3 中，需要先找到对应的数据库
+		_talkerMd5Bytes := md5.Sum([]byte(talkerItem))
+		talkerMd5 := hex.EncodeToString(_talkerMd5Bytes[:])
+		dbPath, ok := ds.talkerDBMap[talkerMd5]
+		if !ok {
+			// 如果找不到对应的数据库，跳过此talker
+			continue
+		}
+
+		db, err := ds.dbm.OpenDB(dbPath)
+		if err != nil {
+			log.Error().Msgf("数据库 %s 未打开", dbPath)
+			continue
+		}
+
+		tableName := fmt.Sprintf("Chat_%s", talkerMd5)
+
+		// 如果没有复杂过滤条件，直接使用COUNT查询
+		if len(senders) == 0 && keyword == "" {
+			query := fmt.Sprintf(`
+				SELECT COUNT(*) 
+				FROM %s 
+				WHERE msgCreateTime >= ? AND msgCreateTime <= ?
+			`, tableName)
+
+			var count int
+			err := db.QueryRowContext(ctx, query, startTime.Unix(), endTime.Unix()).Scan(&count)
+			if err != nil {
+				if strings.Contains(err.Error(), "no such table") {
+					continue
+				}
+				log.Err(err).Msgf("从数据库查询消息数量失败")
+				continue
+			}
+			totalCount += count
+		} else {
+			// 有复杂过滤条件，需要逐行检查
+			query := fmt.Sprintf(`
+				SELECT msgCreateTime, msgContent, messageType, mesDes
+				FROM %s 
+				WHERE msgCreateTime >= ? AND msgCreateTime <= ? 
+				ORDER BY msgCreateTime ASC
+			`, tableName)
+
+			rows, err := db.QueryContext(ctx, query, startTime.Unix(), endTime.Unix())
+			if err != nil {
+				if strings.Contains(err.Error(), "no such table") {
+					continue
+				}
+				log.Err(err).Msgf("从数据库查询消息失败")
+				continue
+			}
+
+			count := 0
+			for rows.Next() {
+				var msg model.MessageDarwinV3
+				err := rows.Scan(
+					&msg.MsgCreateTime,
+					&msg.MsgContent,
+					&msg.MessageType,
+					&msg.MesDes,
+				)
+				if err != nil {
+					rows.Close()
+					return 0, errors.ScanRowFailed(err)
+				}
+
+				// 将消息转换为标准格式
+				message := msg.Wrap(talkerItem)
+
+				// 应用sender过滤
+				if len(senders) > 0 {
+					senderMatch := false
+					for _, s := range senders {
+						if message.Sender == s {
+							senderMatch = true
+							break
+						}
+					}
+					if !senderMatch {
+						continue
+					}
+				}
+
+				// 应用keyword过滤
+				if regex != nil {
+					plainText := message.PlainTextContent()
+					if !regex.MatchString(plainText) {
+						continue
+					}
+				}
+
+				count++
+			}
+			rows.Close()
+			totalCount += count
+		}
+	}
+
+	return totalCount, nil
+}
+
 // 从表名中提取 talker
 func extractTalkerFromTableName(tableName string) string {
 

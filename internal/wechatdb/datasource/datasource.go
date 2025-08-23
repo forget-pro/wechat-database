@@ -17,6 +17,9 @@ type DataSource interface {
 
 	// 消息
 	GetMessages(ctx context.Context, startTime, endTime time.Time, talker string, sender string, keyword string, limit, offset int) ([]*model.Message, error)
+	
+	// 获取消息数量（用于分页）
+	GetMessagesCount(ctx context.Context, startTime, endTime time.Time, talker string, sender string, keyword string) (int, error)
 
 	// 联系人
 	GetContacts(ctx context.Context, key string, limit, offset int) ([]*model.Contact, error)
