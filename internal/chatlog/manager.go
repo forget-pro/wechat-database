@@ -3,8 +3,10 @@ package chatlog
 import (
 	"context"
 	"fmt"
+	"net"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog/log"
 	"github.com/sjzar/chatlog/internal/chatlog/conf"
@@ -357,17 +359,7 @@ func (m *Manager) CommandHTTPServer(addr string, dataDir string, workDir string,
 	// 标记HTTP服务为启用状态
 	m.ctx.HTTPEnabled = true
 
-	// 如果是后台运行，启动HTTP服务并立即返回
-	if background {
-		go func() {
-			if err := m.http.ListenAndServe(); err != nil {
-				log.Err(err).Msg("HTTP server error")
-				m.ctx.HTTPEnabled = false
-			}
-		}()
-		return nil
-	}
-
+	// 启动HTTP服务（阻塞运行）
 	err := m.http.ListenAndServe()
 	// 服务停止时，标记为未启用
 	m.ctx.HTTPEnabled = false
@@ -391,6 +383,10 @@ func (m *Manager) GetCurrentStatus() *ctx.Context {
 	}
 	// Make sure to load the latest config
 	m.ctx.UpdateConfig()
+	
+	// Check if HTTP service is actually running
+	m.ctx.HTTPEnabled = m.isHTTPServiceRunning()
+	
 	return m.ctx
 }
 
@@ -420,4 +416,21 @@ func (m *Manager) SetDataKey(key string) error {
 	m.ctx.DataKey = key
 	m.ctx.UpdateConfig()
 	return nil
+}
+
+// isHTTPServiceRunning checks if HTTP service is actually running
+func (m *Manager) isHTTPServiceRunning() bool {
+	// Get the HTTP address from context, default to 127.0.0.1:5030 if not set
+	addr := m.ctx.HTTPAddr
+	if addr == "" {
+		addr = "127.0.0.1:5030"
+	}
+	
+	// Try to connect to the HTTP service with a short timeout
+	conn, err := net.DialTimeout("tcp", addr, 500*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	conn.Close()
+	return true
 }
