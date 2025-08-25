@@ -6,40 +6,51 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"runtime"
 	"strings"
 	"time"
 
-	"github.com/sjzar/chatlog/internal/chatlog"
-
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+
+	"github.com/sjzar/chatlog/internal/chatlog"
 )
 
 func init() {
 	rootCmd.AddCommand(serverCmd)
-	serverCmd.Flags().StringVarP(&serverAddr, "addr", "a", "127.0.0.1:5030", "server address")
+	serverCmd.Flags().StringVarP(&serverAddr, "addr", "a", "", "server address")
+	serverCmd.Flags().StringVarP(&serverPlatform, "platform", "p", "", "platform")
+	serverCmd.Flags().IntVarP(&serverVer, "version", "v", 0, "version")
 	serverCmd.Flags().StringVarP(&serverDataDir, "data-dir", "d", "", "data dir")
+	serverCmd.Flags().StringVarP(&serverDataKey, "data-key", "k", "", "data key")
+	serverCmd.Flags().StringVarP(&serverImgKey, "img-key", "i", "", "img key")
 	serverCmd.Flags().StringVarP(&serverWorkDir, "work-dir", "w", "", "work dir")
-	serverCmd.Flags().StringVarP(&serverPlatform, "platform", "p", runtime.GOOS, "platform")
-	serverCmd.Flags().IntVarP(&serverVer, "version", "v", 3, "version")
+	serverCmd.Flags().BoolVarP(&serverAutoDecrypt, "auto-decrypt", "", false, "auto decrypt")
+	// 我们的新增功能
 	serverCmd.Flags().BoolVarP(&serverJSON, "json", "j", false, "output result in JSON format")
 	serverCmd.Flags().BoolVarP(&serverBackground, "background", "b", false, "run server in background")
 
 	// 添加守护进程命令
 	rootCmd.AddCommand(serverDaemonCmd)
-	serverDaemonCmd.Flags().StringVarP(&serverAddr, "addr", "a", "127.0.0.1:5030", "server address")
+	serverDaemonCmd.Flags().StringVarP(&serverAddr, "addr", "a", "", "server address")
 	serverDaemonCmd.Flags().StringVarP(&serverDataDir, "data-dir", "d", "", "data dir")
+	serverDaemonCmd.Flags().StringVarP(&serverDataKey, "data-key", "k", "", "data key")
+	serverDaemonCmd.Flags().StringVarP(&serverImgKey, "img-key", "i", "", "img key")
 	serverDaemonCmd.Flags().StringVarP(&serverWorkDir, "work-dir", "w", "", "work dir")
-	serverDaemonCmd.Flags().StringVarP(&serverPlatform, "platform", "p", runtime.GOOS, "platform")
-	serverDaemonCmd.Flags().IntVarP(&serverVer, "version", "v", 3, "version")
+	serverDaemonCmd.Flags().StringVarP(&serverPlatform, "platform", "p", "", "platform")
+	serverDaemonCmd.Flags().IntVarP(&serverVer, "version", "v", 0, "version")
+	serverDaemonCmd.Flags().BoolVarP(&serverAutoDecrypt, "auto-decrypt", "", false, "auto decrypt")
 }
 
 var (
-	serverAddr       string
-	serverDataDir    string
-	serverWorkDir    string
-	serverPlatform   string
-	serverVer        int
+	serverAddr        string
+	serverDataDir     string
+	serverDataKey     string
+	serverImgKey      string
+	serverWorkDir     string
+	serverPlatform    string
+	serverVer         int
+	serverAutoDecrypt bool
+	// 我们的新增变量
 	serverJSON       bool
 	serverBackground bool
 )
@@ -59,48 +70,57 @@ var serverCmd = &cobra.Command{
 	Use:   "server",
 	Short: "Start HTTP server",
 	Run: func(cmd *cobra.Command, args []string) {
-		result := ServerResult{
-			Address:    serverAddr,
-			DataDir:    serverDataDir,
-			WorkDir:    serverWorkDir,
-			Platform:   serverPlatform,
-			Version:    serverVer,
-			Background: serverBackground,
-		}
+		// 如果启用了 JSON 或后台模式，使用我们的增强逻辑
+		if serverJSON || serverBackground {
+			result := ServerResult{
+				Address:    serverAddr,
+				DataDir:    serverDataDir,
+				WorkDir:    serverWorkDir,
+				Platform:   serverPlatform,
+				Version:    serverVer,
+				Background: serverBackground,
+			}
 
-		// 如果是后台模式，创建独立的后台进程
-		if serverBackground {
-			if err := startBackgroundServer(result); err != nil {
-				result.Success = false
-				result.Message = fmt.Sprintf("failed to start background server: %v", err)
+			// 如果是后台模式，创建独立的后台进程
+			if serverBackground {
+				if err := startBackgroundServer(result); err != nil {
+					result.Success = false
+					result.Message = fmt.Sprintf("failed to start background server: %v", err)
+					outputResult(result, serverJSON)
+					return
+				}
+				result.Success = true
+				result.Message = fmt.Sprintf("HTTP server started successfully on %s", serverAddr)
 				outputResult(result, serverJSON)
 				return
 			}
+
+			// 前台模式但使用 JSON 输出
+			cmdConf := getServerConfig()
+			log.Info().Msgf("server cmd config: %+v", cmdConf)
+
+			m := chatlog.New()
+			if err := m.CommandHTTPServer("", cmdConf); err != nil {
+				result.Success = false
+				result.Message = fmt.Sprintf("failed to start server: %v", err)
+				outputResult(result, serverJSON)
+				return
+			}
+
 			result.Success = true
 			result.Message = fmt.Sprintf("HTTP server started successfully on %s", serverAddr)
 			outputResult(result, serverJSON)
-			return
-		}
+		} else {
+			// 使用第三方的原始逻辑
+			cmdConf := getServerConfig()
+			log.Info().Msgf("server cmd config: %+v", cmdConf)
 
-		// 前台模式
-		m, err := chatlog.New("")
-		if err != nil {
-			result.Success = false
-			result.Message = fmt.Sprintf("failed to create chatlog instance: %v", err)
-			outputResult(result, serverJSON)
-			return
+			m := chatlog.New()
+			if err := m.CommandHTTPServer("", cmdConf); err != nil {
+				log.Err(err).Msg("failed to start server")
+				return
+			}
 		}
-
-		if err := m.CommandHTTPServer(serverAddr, serverDataDir, serverWorkDir, serverPlatform, serverVer, false, serverJSON); err != nil {
-			result.Success = false
-			result.Message = fmt.Sprintf("failed to start server: %v", err)
-			outputResult(result, serverJSON)
-			return
-		}
-
-		result.Success = true
-		result.Message = fmt.Sprintf("HTTP server started successfully on %s", serverAddr)
-		outputResult(result, serverJSON)
 	},
 }
 
@@ -110,14 +130,12 @@ var serverDaemonCmd = &cobra.Command{
 	Short:  "Run HTTP server daemon (internal use)",
 	Hidden: true, // 隐藏此命令，不在帮助中显示
 	Run: func(cmd *cobra.Command, args []string) {
-		m, err := chatlog.New("")
-		if err != nil {
-			fmt.Printf("failed to create chatlog instance: %v\n", err)
-			os.Exit(1)
-		}
+		// 使用第三方的配置系统
+		cmdConf := getServerConfig()
+		log.Info().Msgf("server daemon config: %+v", cmdConf)
 
-		// 运行前台服务器（在守护进程中）
-		if err := m.CommandHTTPServer(serverAddr, serverDataDir, serverWorkDir, serverPlatform, serverVer, false, false); err != nil {
+		m := chatlog.New()
+		if err := m.CommandHTTPServer("", cmdConf); err != nil {
 			fmt.Printf("failed to start server: %v\n", err)
 			os.Exit(1)
 		}
@@ -142,17 +160,31 @@ func startBackgroundServer(result ServerResult) error {
 	// 构建命令参数
 	args := []string{
 		"server-daemon", // 使用特殊的守护进程命令
-		"-a", result.Address,
-		"-p", result.Platform,
-		"-v", fmt.Sprintf("%d", result.Version),
 	}
 	
+	if result.Address != "" {
+		args = append(args, "-a", result.Address)
+	}
+	if result.Platform != "" {
+		args = append(args, "-p", result.Platform)
+	}
+	if result.Version != 0 {
+		args = append(args, "-v", fmt.Sprintf("%d", result.Version))
+	}
 	if result.DataDir != "" {
 		args = append(args, "-d", result.DataDir)
 	}
-	
+	if serverDataKey != "" {
+		args = append(args, "-k", serverDataKey)
+	}
+	if serverImgKey != "" {
+		args = append(args, "-i", serverImgKey)
+	}
 	if result.WorkDir != "" {
 		args = append(args, "-w", result.WorkDir)
+	}
+	if serverAutoDecrypt {
+		args = append(args, "--auto-decrypt")
 	}
 
 	var cmd *exec.Cmd
@@ -163,7 +195,7 @@ func startBackgroundServer(result ServerResult) error {
 		// 如果是 go run 模式，先编译后台程序
 		// 创建临时目录
 		tempDir := os.TempDir()
-		tempExe := fmt.Sprintf("%s\\chatlog-daemon-%d.exe", tempDir, time.Now().Unix())
+		tempExe := fmt.Sprintf("%s%cchatlog-daemon-%d.exe", tempDir, os.PathSeparator, time.Now().Unix())
 		
 		// 编译程序
 		buildCmd := exec.Command("go", "build", "-o", tempExe, ".")
@@ -195,6 +227,11 @@ func startBackgroundServer(result ServerResult) error {
 
 // checkHTTPServiceRunning 检查 HTTP 服务是否在运行
 func checkHTTPServiceRunning(addr string) error {
+	// 如果地址为空，使用默认地址
+	if addr == "" {
+		addr = "127.0.0.1:5030"
+	}
+	
 	for i := 0; i < 10; i++ { // 最多等待 5 秒
 		conn, err := net.DialTimeout("tcp", addr, 500*time.Millisecond)
 		if err == nil {
@@ -206,20 +243,31 @@ func checkHTTPServiceRunning(addr string) error {
 	return fmt.Errorf("HTTP service failed to start or is not accessible")
 }
 
-// getHost 从地址中提取主机名
-func getHost(addr string) string {
-	parts := strings.Split(addr, ":")
-	if len(parts) >= 2 {
-		return parts[0]
+func getServerConfig() map[string]any {
+	cmdConf := make(map[string]any)
+	if len(serverAddr) != 0 {
+		cmdConf["http_addr"] = serverAddr
 	}
-	return addr
-}
-
-// getPort 从地址中提取端口
-func getPort(addr string) string {
-	parts := strings.Split(addr, ":")
-	if len(parts) >= 2 {
-		return parts[1]
+	if len(serverDataDir) != 0 {
+		cmdConf["data_dir"] = serverDataDir
 	}
-	return ""
+	if len(serverDataKey) != 0 {
+		cmdConf["data_key"] = serverDataKey
+	}
+	if len(serverImgKey) != 0 {
+		cmdConf["img_key"] = serverImgKey
+	}
+	if len(serverWorkDir) != 0 {
+		cmdConf["work_dir"] = serverWorkDir
+	}
+	if len(serverPlatform) != 0 {
+		cmdConf["platform"] = serverPlatform
+	}
+	if serverVer != 0 {
+		cmdConf["version"] = serverVer
+	}
+	if serverAutoDecrypt {
+		cmdConf["auto_decrypt"] = true
+	}
+	return cmdConf
 }

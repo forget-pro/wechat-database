@@ -64,8 +64,6 @@ var (
 	getSecretJSON bool
 
 	// Decrypt data command variables
-	decryptDataDir      string
-	decryptWorkDir      string
 	decryptKey          string
 	decryptDataPlatform string
 	decryptDataVer      int
@@ -153,17 +151,7 @@ var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Get WeChat process information",
 	Run: func(cmd *cobra.Command, args []string) {
-		m, err := chatlog.New("")
-		if err != nil {
-			if statusJSON {
-				resp := StatusResponse{Success: false, Message: err.Error()}
-				jsonData, _ := json.Marshal(resp)
-				fmt.Println(string(jsonData))
-			} else {
-				log.Err(err).Msg("failed to create chatlog instance")
-			}
-			return
-		}
+		m := chatlog.New()
 
 		// Get current status information
 		status := m.GetCurrentStatus()
@@ -243,19 +231,9 @@ var getSecretCmd = &cobra.Command{
 	Use:   "get-secret",
 	Short: "Get data encryption key",
 	Run: func(cmd *cobra.Command, args []string) {
-		m, err := chatlog.New("")
-		if err != nil {
-			if getSecretJSON {
-				resp := GetSecretResponse{Success: false, Message: err.Error()}
-				jsonData, _ := json.Marshal(resp)
-				fmt.Println(string(jsonData))
-			} else {
-				log.Err(err).Msg("failed to create chatlog instance")
-			}
-			return
-		}
+		m := chatlog.New()
 
-		key, err := m.CommandKey(getSecretPID)
+		key, err := m.CommandKey("", getSecretPID, false, false)
 		if err != nil {
 			if getSecretJSON {
 				resp := GetSecretResponse{Success: false, Message: err.Error()}
@@ -292,19 +270,27 @@ var decryptDataCmd = &cobra.Command{
 	Use:   "decrypt-data",
 	Short: "Decrypt WeChat database files",
 	Run: func(cmd *cobra.Command, args []string) {
-		m, err := chatlog.New("")
-		if err != nil {
-			if decryptDataJSON {
-				resp := DecryptDataResponse{Success: false, Message: err.Error()}
-				jsonData, _ := json.Marshal(resp)
-				fmt.Println(string(jsonData))
-			} else {
-				log.Err(err).Msg("failed to create chatlog instance")
-			}
-			return
+		m := chatlog.New()
+
+		// Create command configuration
+		cmdConf := make(map[string]any)
+		if len(decryptDataDir) != 0 {
+			cmdConf["data_dir"] = decryptDataDir
+		}
+		if len(decryptWorkDir) != 0 {
+			cmdConf["work_dir"] = decryptWorkDir
+		}
+		if len(decryptKey) != 0 {
+			cmdConf["data_key"] = decryptKey
+		}
+		if len(decryptDataPlatform) != 0 {
+			cmdConf["platform"] = decryptDataPlatform
+		}
+		if decryptDataVer != 0 {
+			cmdConf["version"] = decryptDataVer
 		}
 
-		err = m.CommandDecrypt(decryptDataDir, decryptWorkDir, decryptKey, decryptDataPlatform, decryptDataVer)
+		err := m.CommandDecrypt("", cmdConf)
 		if err != nil {
 			if decryptDataJSON {
 				resp := DecryptDataResponse{Success: false, Message: err.Error()}
@@ -344,17 +330,7 @@ var autoDecryptCmd = &cobra.Command{
 	Use:   "auto-decrypt",
 	Short: "Start or stop automatic decryption",
 	Run: func(cmd *cobra.Command, args []string) {
-		m, err := chatlog.New("")
-		if err != nil {
-			if autoDecryptJSON {
-				resp := AutoDecryptResponse{Success: false, Message: err.Error()}
-				jsonData, _ := json.Marshal(resp)
-				fmt.Println(string(jsonData))
-			} else {
-				log.Err(err).Msg("failed to create chatlog instance")
-			}
-			return
-		}
+		m := chatlog.New()
 
 		if autoDecryptStop {
 			// Stop auto decryption
@@ -444,17 +420,7 @@ var workDirCmd = &cobra.Command{
 	Use:   "work-dir",
 	Short: "Set working directory",
 	Run: func(cmd *cobra.Command, args []string) {
-		m, err := chatlog.New("")
-		if err != nil {
-			if workDirJSON {
-				resp := WorkDirResponse{Success: false, Message: err.Error()}
-				jsonData, _ := json.Marshal(resp)
-				fmt.Println(string(jsonData))
-			} else {
-				log.Err(err).Msg("failed to create chatlog instance")
-			}
-			return
-		}
+		m := chatlog.New()
 
 		if workDirPath == "" {
 			if workDirJSON {
@@ -470,7 +436,7 @@ var workDirCmd = &cobra.Command{
 			return
 		}
 
-		err = m.SetWorkDir(workDirPath)
+		err := m.SetWorkDir(workDirPath)
 		if err != nil {
 			if workDirJSON {
 				resp := WorkDirResponse{Success: false, Message: err.Error()}
@@ -507,17 +473,7 @@ var setSecretCmd = &cobra.Command{
 	Use:   "set-secret",
 	Short: "Set data encryption key",
 	Run: func(cmd *cobra.Command, args []string) {
-		m, err := chatlog.New("")
-		if err != nil {
-			if setSecretJSON {
-				resp := SetSecretResponse{Success: false, Message: err.Error()}
-				jsonData, _ := json.Marshal(resp)
-				fmt.Println(string(jsonData))
-			} else {
-				log.Err(err).Msg("failed to create chatlog instance")
-			}
-			return
-		}
+		m := chatlog.New()
 
 		if setSecretKey == "" {
 			if setSecretJSON {
@@ -533,7 +489,7 @@ var setSecretCmd = &cobra.Command{
 			return
 		}
 
-		err = m.SetDataKey(setSecretKey)
+		err := m.SetDataKey(setSecretKey)
 		if err != nil {
 			if setSecretJSON {
 				resp := SetSecretResponse{Success: false, Message: err.Error()}
@@ -569,17 +525,7 @@ var dataDirCmd = &cobra.Command{
 	Use:   "data-dir",
 	Short: "Set data directory",
 	Run: func(cmd *cobra.Command, args []string) {
-		m, err := chatlog.New("")
-		if err != nil {
-			if dataDirJSON {
-				resp := DataDirResponse{Success: false, Message: err.Error()}
-				jsonData, _ := json.Marshal(resp)
-				fmt.Println(string(jsonData))
-			} else {
-				log.Err(err).Msg("failed to create chatlog instance")
-			}
-			return
-		}
+		m := chatlog.New()
 
 		if dataDirPath == "" {
 			if dataDirJSON {
@@ -595,7 +541,7 @@ var dataDirCmd = &cobra.Command{
 			return
 		}
 
-		err = m.SetDataDir(dataDirPath)
+		err := m.SetDataDir(dataDirPath)
 		if err != nil {
 			if dataDirJSON {
 				resp := DataDirResponse{Success: false, Message: err.Error()}

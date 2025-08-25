@@ -3,34 +3,34 @@ package http
 import (
 	"context"
 	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
-	"github.com/sjzar/chatlog/internal/chatlog/ctx"
-	"github.com/sjzar/chatlog/internal/chatlog/database"
-	"github.com/sjzar/chatlog/internal/chatlog/mcp"
-	"github.com/sjzar/chatlog/internal/errors"
-
 	"github.com/gin-gonic/gin"
+	"github.com/mark3labs/mcp-go/server"
 	"github.com/rs/zerolog/log"
-)
 
-const (
-	DefalutHTTPAddr = "127.0.0.1:5030"
+	"github.com/sjzar/chatlog/internal/chatlog/database"
+	"github.com/sjzar/chatlog/internal/errors"
 )
 
 type Service struct {
-	ctx *ctx.Context
-	db  *database.Service
-	mcp *mcp.Service
+	conf Config
+	db   *database.Service
 
 	router *gin.Engine
 	server *http.Server
+
+	mcpServer           *server.MCPServer
+	mcpSSEServer        *server.SSEServer
+	mcpStreamableServer *server.StreamableHTTPServer
 }
 
-func NewService(ctx *ctx.Context, db *database.Service, mcp *mcp.Service) *Service {
+type Config interface {
+	GetHTTPAddr() string
+	GetDataDir() string
+}
+
+func NewService(conf Config, db *database.Service) *Service {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 
@@ -43,28 +43,25 @@ func NewService(ctx *ctx.Context, db *database.Service, mcp *mcp.Service) *Servi
 	router.Use(
 		errors.RecoveryMiddleware(),
 		errors.ErrorHandlerMiddleware(),
-		gin.LoggerWithWriter(log.Logger),
+		gin.LoggerWithWriter(log.Logger, "/health"),
+		corsMiddleware(),
 	)
 
 	s := &Service{
-		ctx:    ctx,
+		conf:   conf,
 		db:     db,
-		mcp:    mcp,
 		router: router,
 	}
 
+	s.initMCPServer()
 	s.initRouter()
 	return s
 }
 
 func (s *Service) Start() error {
 
-	if s.ctx.HTTPAddr == "" {
-		s.ctx.HTTPAddr = DefalutHTTPAddr
-	}
-
 	s.server = &http.Server{
-		Addr:    s.ctx.HTTPAddr,
+		Addr:    s.conf.GetHTTPAddr(),
 		Handler: s.router,
 	}
 
@@ -75,47 +72,20 @@ func (s *Service) Start() error {
 		}
 	}()
 
-	log.Info().Msg("Starting HTTP server on " + s.ctx.HTTPAddr)
+	log.Info().Msg("Starting HTTP server on " + s.conf.GetHTTPAddr())
 
 	return nil
 }
 
 func (s *Service) ListenAndServe() error {
 
-	if s.ctx.HTTPAddr == "" {
-		s.ctx.HTTPAddr = DefalutHTTPAddr
-	}
-
 	s.server = &http.Server{
-		Addr:    s.ctx.HTTPAddr,
+		Addr:    s.conf.GetHTTPAddr(),
 		Handler: s.router,
 	}
 
-	// 设置信号处理，用于优雅关闭
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		<-quit
-		log.Info().Msg("Shutting down HTTP server...")
-
-		// 创建超时上下文
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		// 优雅关闭服务器
-		if err := s.server.Shutdown(ctx); err != nil {
-			log.Error().Err(err).Msg("Server forced to shutdown")
-		}
-	}()
-
-	log.Info().Msg("Starting HTTP server on " + s.ctx.HTTPAddr)
-	if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		return err
-	}
-
-	log.Info().Msg("HTTP server exited")
-	return nil
+	log.Info().Msg("Starting HTTP server on " + s.conf.GetHTTPAddr())
+	return s.server.ListenAndServe()
 }
 
 func (s *Service) Stop() error {

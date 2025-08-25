@@ -249,14 +249,9 @@ func (m *Message) PlainTextContent() string {
 				keylist = append(keylist, md5)
 			}
 		}
-		if m.Contents["imgfile"] != nil {
-			if imgfile, ok := m.Contents["imgfile"].(string); ok {
-				keylist = append(keylist, imgfile)
-			}
-		}
-		if m.Contents["thumb"] != nil {
-			if thumb, ok := m.Contents["thumb"].(string); ok {
-				keylist = append(keylist, thumb)
+		if m.Contents["path"] != nil {
+			if path, ok := m.Contents["path"].(string); ok {
+				keylist = append(keylist, path)
 			}
 		}
 		return fmt.Sprintf("![图片](http://%s/image/%s)", m.Contents["host"], strings.Join(keylist, ","))
@@ -279,14 +274,9 @@ func (m *Message) PlainTextContent() string {
 				keylist = append(keylist, rawmd5)
 			}
 		}
-		if m.Contents["videofile"] != nil {
-			if videofile, ok := m.Contents["videofile"].(string); ok {
-				keylist = append(keylist, videofile)
-			}
-		}
-		if m.Contents["thumb"] != nil {
-			if thumb, ok := m.Contents["thumb"].(string); ok {
-				keylist = append(keylist, thumb)
+		if m.Contents["path"] != nil {
+			if path, ok := m.Contents["path"].(string); ok {
+				keylist = append(keylist, path)
 			}
 		}
 		return fmt.Sprintf("![视频](http://%s/video/%s)", m.Contents["host"], strings.Join(keylist, ","))
@@ -381,5 +371,17 @@ func (m *Message) PlainTextContent() string {
 			content = content[:120] + "<...>"
 		}
 		return fmt.Sprintf("Type: %d Content: %s", m.Type, content)
+	}
+}
+
+func (m *Message) CSV(host string) []string {
+	m.SetContent("host", host)
+	return []string{
+		m.Time.Format("2006-01-02 15:04:05"),
+		m.SenderName,
+		m.Sender,
+		m.TalkerName,
+		m.Talker,
+		m.PlainTextContent(),
 	}
 }
