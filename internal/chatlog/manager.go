@@ -316,7 +316,7 @@ func (m *Manager) CommandDecrypt(dataDir string, workDir string, key string, pla
 	return nil
 }
 
-func (m *Manager) CommandHTTPServer(addr string, dataDir string, workDir string, platform string, version int) error {
+func (m *Manager) CommandHTTPServer(addr string, dataDir string, workDir string, platform string, version int, background bool, useJSON bool) error {
 
 	if addr == "" {
 		addr = "127.0.0.1:5030"
@@ -354,7 +354,24 @@ func (m *Manager) CommandHTTPServer(addr string, dataDir string, workDir string,
 		return err
 	}
 
-	return m.http.ListenAndServe()
+	// 标记HTTP服务为启用状态
+	m.ctx.HTTPEnabled = true
+
+	// 如果是后台运行，启动HTTP服务并立即返回
+	if background {
+		go func() {
+			if err := m.http.ListenAndServe(); err != nil {
+				log.Err(err).Msg("HTTP server error")
+				m.ctx.HTTPEnabled = false
+			}
+		}()
+		return nil
+	}
+
+	err := m.http.ListenAndServe()
+	// 服务停止时，标记为未启用
+	m.ctx.HTTPEnabled = false
+	return err
 }
 
 // GetWeChatInstances returns all running WeChat instances

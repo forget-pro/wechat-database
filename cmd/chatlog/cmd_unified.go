@@ -103,6 +103,7 @@ type StatusResponse struct {
 	WorkUsage     string `json:"work_usage,omitempty"`
 	WorkDir       string `json:"work_dir,omitempty"`
 	HTTPServer    string `json:"http_server,omitempty"`
+	HTTPStatus    bool   `json:"http_status"`
 	AutoDecrypt   string `json:"auto_decrypt,omitempty"`
 	HTTPAddr      string `json:"http_addr,omitempty"`
 	Message       string `json:"message"`
@@ -210,6 +211,7 @@ var statusCmd = &cobra.Command{
 				WorkUsage:   workUsage,
 				WorkDir:     status.WorkDir,
 				HTTPServer:  httpServerStr,
+				HTTPStatus:  status.HTTPEnabled,
 				AutoDecrypt: autoDecryptStr,
 				HTTPAddr:    status.HTTPAddr,
 				Success:     true,

@@ -3,6 +3,9 @@ package http
 import (
 	"context"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/sjzar/chatlog/internal/chatlog/ctx"
@@ -88,8 +91,31 @@ func (s *Service) ListenAndServe() error {
 		Handler: s.router,
 	}
 
+	// 设置信号处理，用于优雅关闭
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		<-quit
+		log.Info().Msg("Shutting down HTTP server...")
+
+		// 创建超时上下文
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		// 优雅关闭服务器
+		if err := s.server.Shutdown(ctx); err != nil {
+			log.Error().Err(err).Msg("Server forced to shutdown")
+		}
+	}()
+
 	log.Info().Msg("Starting HTTP server on " + s.ctx.HTTPAddr)
-	return s.server.ListenAndServe()
+	if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		return err
+	}
+
+	log.Info().Msg("HTTP server exited")
+	return nil
 }
 
 func (s *Service) Stop() error {

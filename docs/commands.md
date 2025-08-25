@@ -2,6 +2,21 @@
 
 本文档详细介绍了 Chatlog 工具的所有可用命令行指令。
 
+## 最新更新 (2025-08-25)
+
+✨ **新增功能**：
+
+- **分页支持**: 所有 HTTP API 接口 (联系人、群组、聊天记录) 现在都支持分页功能
+- **服务器增强**: `chatlog server` 命令新增 JSON 输出、后台运行、优雅关闭功能
+- **状态追踪**: `status` 命令新增 `http_status` 字段，显示 HTTP 服务器运行状态
+- **进程管理**: 优化 `stop` 和 `exit` 命令，明确区分功能和使用场景
+
+🔧 **改进功能**：
+
+- HTTP 服务器支持 `0.0.0.0` 监听，允许外部访问
+- 增强错误处理和信号管理
+- 完善跨平台进程管理
+
 ## 目录
 
 - [基础命令](#基础命令)
@@ -235,6 +250,8 @@ chatlog server [flags]
 - `-w, --work-dir <目录>`: 工作目录路径
 - `-p, --platform <平台>`: 平台类型 (默认为当前系统)
 - `-v, --version <版本>`: 微信版本 (默认为 3)
+- `-j, --json`: 以 JSON 格式输出结果
+- `-b, --background`: 后台运行服务器
 - `-h, --help`: 显示帮助信息
 
 **功能：**
@@ -242,6 +259,8 @@ chatlog server [flags]
 - 启动 HTTP API 服务器
 - 提供 RESTful API 接口访问聊天数据
 - 支持 MCP 协议集成
+- 支持优雅关闭和信号处理
+- 支持后台运行模式
 
 **使用示例：**
 
@@ -249,12 +268,40 @@ chatlog server [flags]
 # 使用默认设置启动服务器
 chatlog server
 
-# 指定监听地址和端口
+# 监听所有接口，支持外部访问
 chatlog server -a "0.0.0.0:8080"
+
+# 后台运行服务器
+chatlog server -b
+
+# 后台运行并以JSON格式输出状态
+chatlog server -b -j
 
 # 指定数据和工作目录
 chatlog server -d "/path/to/data" -w "/path/to/work"
 ```
+
+**JSON 输出格式：**
+
+```json
+{
+  "success": true,
+  "message": "HTTP server started successfully on 127.0.0.1:5030",
+  "address": "127.0.0.1:5030",
+  "data_dir": "/path/to/data",
+  "work_dir": "/path/to/work",
+  "platform": "windows",
+  "version": 3,
+  "background": false
+}
+```
+
+**特性：**
+
+- **优雅关闭**: 支持 Ctrl+C 信号，安全停止服务
+- **0.0.0.0 监听**: 支持监听所有网络接口
+- **后台运行**: 使用`-b`参数可后台运行
+- **状态跟踪**: 服务状态会在`status`命令中显示
 
 ### `chatlog stop`
 
@@ -266,16 +313,23 @@ chatlog stop
 
 **功能：**
 
-- 查找并停止正在运行的 chatlog 进程
+- 查找并停止正在运行的 chatlog 进程（除当前进程外）
 - 支持 Windows 和 Unix 系统
-- 自动排除当前进程
+- 自动排除当前进程，避免自我终止
+- **当前进程继续运行**，可以执行后续命令
 
 **使用示例：**
 
 ```bash
-# 停止服务
+# 停止其他正在运行的 chatlog 服务
 chatlog stop
 ```
+
+**适用场景：**
+
+- 需要停止后台运行的 HTTP 服务器
+- 重新启动服务前清理旧进程
+- 当前 shell 会话需要继续使用 chatlog 工具
 
 ### `chatlog exit`
 
@@ -287,16 +341,38 @@ chatlog exit
 
 **功能：**
 
-- 停止所有正在运行的服务
-- 清理资源后安全退出
+- 停止所有正在运行的 chatlog 进程（包括其他进程）
+- 清理资源后**当前进程也会退出**
+- 调用 `os.Exit(0)` 完全终止程序
 - 比直接 kill 进程更安全
 
 **使用示例：**
 
 ```bash
-# 安全退出程序
+# 停止所有服务并退出程序
 chatlog exit
 ```
+
+**适用场景：**
+
+- 完全关闭所有 chatlog 相关进程
+- 脚本执行完毕后清理所有资源
+- 不再需要使用 chatlog 工具时
+
+### `stop` vs `exit` 命令对比
+
+| 特性         | `chatlog stop`     | `chatlog exit`     |
+| ------------ | ------------------ | ------------------ |
+| 停止其他进程 | ✅ 是              | ✅ 是              |
+| 当前进程行为 | 🔄 继续运行        | ❌ 退出程序        |
+| 后续命令执行 | ✅ 可以继续执行    | ❌ 无法执行        |
+| 适用场景     | 重启服务、管理进程 | 完全退出、脚本结束 |
+| 返回控制台   | ✅ 返回命令提示符  | ❌ 程序终止        |
+
+**选择建议：**
+
+- 使用 `stop`：当你需要停止服务但继续使用 chatlog 工具时
+- 使用 `exit`：当你需要完全关闭所有 chatlog 进程并退出时
 
 ### `chatlog auto-decrypt`
 
@@ -399,7 +475,7 @@ chatlog work-dir -d "/path/to/work/dir" -j
 
 ### `chatlog status`
 
-获取微信进程信息。
+获取微信进程和系统状态信息。
 
 ```bash
 chatlog status [flags]
@@ -413,12 +489,14 @@ chatlog status [flags]
 **功能：**
 
 - 显示当前运行的微信进程信息
-- 包括进程 ID、账号、版本等信息
+- 显示 HTTP 服务器状态
+- 显示数据目录和工作目录使用情况
+- 显示自动解密状态
 
 **使用示例：**
 
 ```bash
-# 查看微信进程状态
+# 查看完整系统状态
 chatlog status
 
 # 以JSON格式输出状态信息
@@ -429,17 +507,33 @@ chatlog status -j
 
 ```json
 {
-  "success": true,
-  "processes": [
-    {
-      "pid": 12345,
-      "account": "wxid_example",
-      "version": "3.9.10.19",
-      "platform": "windows"
-    }
-  ]
+  "account": "wxid_example",
+  "pid": 12345,
+  "status": "online",
+  "exe_path": "C:\\Program Files\\Tencent\\WeChat\\WeChat.exe",
+  "platform": "windows",
+  "version": "3.9.12.55",
+  "session": "2024-01-01 12:00:00",
+  "data_key": "your_encryption_key",
+  "data_usage": "2.5 GB",
+  "data_dir": "C:\\Users\\User\\Documents\\WeChat Files\\wxid_example",
+  "work_usage": "835.3 MB",
+  "work_dir": "C:\\Users\\User\\Documents\\chatlog\\wxid_example",
+  "http_server": "[已启动] 127.0.0.1:5030",
+  "http_status": true,
+  "auto_decrypt": "[未开启]",
+  "http_addr": "127.0.0.1:5030",
+  "message": "Status information retrieved successfully",
+  "success": true
 }
 ```
+
+**关键字段说明：**
+
+- `http_status`: 布尔值，表示 HTTP 服务器是否正在运行
+- `http_server`: 字符串，HTTP 服务器状态的友好显示
+- `http_addr`: HTTP 服务器监听地址
+- `data_usage`/`work_usage`: 目录空间使用情况
 
 ### `chatlog version`
 
@@ -949,9 +1043,27 @@ if key:
    - 确认微信版本设置
 
 3. **服务启动失败**
+
    - 检查端口是否被占用
    - 验证工作目录权限
    - 查看调试日志信息
+
+4. **HTTP API 分页问题**
+
+   - 检查 `limit` 和 `offset` 参数是否正确
+   - 确认 `format=json` 参数已设置
+   - 验证服务器是否正常运行
+
+5. **后台服务管理**
+
+   - 使用 `chatlog status -j` 检查服务状态
+   - 使用 `chatlog stop` 停止后台服务
+   - 使用 `chatlog exit` 完全退出所有进程
+
+6. **进程管理问题**
+   - Windows 用户确保有足够权限终止进程
+   - 如果 `stop` 命令失败，尝试手动终止进程
+   - 区分使用 `stop`（继续运行）和 `exit`（完全退出）
 
 ### 调试方法
 
